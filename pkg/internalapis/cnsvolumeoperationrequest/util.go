@@ -31,6 +31,9 @@ const (
 	// maxEntriesInLatestOperationDetails specifies the maximum length of
 	// the LatestOperationDetails allowed in a cnsvolumeoperationrequest instance
 	maxEntriesInLatestOperationDetails = 10
+	TaskInvocationStatusInProgress = "InProgress"
+	TaskInvocationStatusError = "Error"
+	TaskInvocationStatusSuccess = "Success"
 )
 
 // VolumeOperationRequestDetails stores details about a single operation
@@ -82,3 +85,4 @@ func convertToCnsVolumeOperationRequestDetails(details OperationDetails) *cnsvol
 		Error:                   details.Error,
 	}
 }
+

@@ -455,7 +455,7 @@ func (volumeMigration *volumeMigration) registerVolume(ctx context.Context, volu
 			log.Infof("Registering volume: %q using backingDiskURLPath :%q", volumeSpec.VolumePath, backingDiskURLPath)
 		}
 		log.Debugf("vSphere CSI driver registering volume %q with create spec %+v", volumeSpec.VolumePath, spew.Sdump(createSpec))
-		volumeInfo, err = (*volumeMigration.volumeManager).CreateVolume(ctx, createSpec)
+		volumeInfo, err = (*volumeMigration.volumeManager).CreateVolume(ctx, createSpec, true)
 		if err != nil {
 			log.Warnf("failed to register volume %q with createSpec: %v. error: %+v", volumeSpec.VolumePath, createSpec, err)
 		} else {

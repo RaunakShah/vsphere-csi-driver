@@ -168,7 +168,7 @@ func CreateBlockVolumeUtil(ctx context.Context, clusterFlavor cnstypes.CnsCluste
 	}
 
 	log.Debugf("vSphere CSI driver creating volume %s with create spec %+v", spec.Name, spew.Sdump(createSpec))
-	volumeInfo, err := manager.VolumeManager.CreateVolume(ctx, createSpec)
+	volumeInfo, err := manager.VolumeManager.CreateVolume(ctx, createSpec, true)
 	if err != nil {
 		log.Errorf("failed to create disk %s with error %+v", spec.Name, err)
 		return nil, err
@@ -256,7 +256,7 @@ func CreateFileVolumeUtil(ctx context.Context, clusterFlavor cnstypes.CnsCluster
 	}
 
 	log.Debugf("vSphere CSI driver creating volume %q with create spec %+v", spec.Name, spew.Sdump(createSpec))
-	volumeInfo, err := manager.VolumeManager.CreateVolume(ctx, createSpec)
+	volumeInfo, err := manager.VolumeManager.CreateVolume(ctx, createSpec, true)
 	if err != nil {
 		log.Errorf("failed to create file volume %q with error %+v", spec.Name, err)
 		return "", err
@@ -405,7 +405,7 @@ func CreateFileVolumeUtilOld(ctx context.Context, clusterFlavor cnstypes.CnsClus
 	}
 
 	log.Debugf("vSphere CSI driver creating volume %q with create spec %+v", spec.Name, spew.Sdump(createSpec))
-	volumeInfo, err := manager.VolumeManager.CreateVolume(ctx, createSpec)
+	volumeInfo, err := manager.VolumeManager.CreateVolume(ctx, createSpec, true)
 	if err != nil {
 		log.Errorf("failed to create file volume %q with error %+v", spec.Name, err)
 		return "", err
@@ -499,26 +499,6 @@ func ExpandVolumeUtil(ctx context.Context, manager *Manager, volumeID string, ca
 		log.Infof("Requested volume size is equal to current size %d Mb. Expansion not required.", capacityInMb)
 	}
 	return err
-}
-
-// QueryVolumeByID is the helper function to query volume by volumeID
-func QueryVolumeByID(ctx context.Context, volManager cnsvolume.Manager, volumeID string) (*cnstypes.CnsVolume, error) {
-	log := logger.GetLogger(ctx)
-	queryFilter := cnstypes.CnsQueryFilter{
-		VolumeIds: []cnstypes.CnsVolumeId{{Id: volumeID}},
-	}
-	queryResult, err := volManager.QueryVolume(ctx, queryFilter)
-	if err != nil {
-		msg := fmt.Sprintf("QueryVolume failed for volumeID: %s with error %+v", volumeID, err)
-		log.Error(msg)
-		return nil, err
-	}
-	if len(queryResult.Volumes) == 0 {
-		msg := fmt.Sprintf("volumeID %q not found in QueryVolume", volumeID)
-		log.Error(msg)
-		return nil, ErrNotFound
-	}
-	return &queryResult.Volumes[0], nil
 }
 
 // Helper function to get DatastoreMoRefs

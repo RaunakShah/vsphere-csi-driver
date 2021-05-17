@@ -39,6 +39,7 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	restclient "k8s.io/client-go/rest"
 
 	cnsoperatorv1alpha1 "sigs.k8s.io/vsphere-csi-driver/pkg/apis/cnsoperator"
 	cnsvolume "sigs.k8s.io/vsphere-csi-driver/pkg/common/cns-lib/volume"
@@ -826,7 +827,7 @@ func (c *K8sOrchestrator) IsFakeAttachAllowed(ctx context.Context, volumeID stri
 	if val, found := pvcAnn[common.AnnIgnoreInaccessiblePV]; found && val == "yes" {
 		log.Debugf("Found %s annotation on pvc set to yes for volume: %s. Checking volume health on CNS volume.", common.AnnIgnoreInaccessiblePV, volumeID)
 		//Check if volume is inaccessible
-		vol, err := common.QueryVolumeByID(ctx, volumeManager, volumeID)
+		vol, err := cnsvolume.QueryVolumeByID(ctx, volumeManager, volumeID)
 		if err != nil {
 			log.Errorf("failed to query CNS for volume ID %s while checking eligibility for fake attach", volumeID)
 			return false, err

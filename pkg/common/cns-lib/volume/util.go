@@ -19,6 +19,7 @@ package volume
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/vmware/govmomi/cns"
 	cnstypes "github.com/vmware/govmomi/cns/types"
@@ -97,4 +98,27 @@ func updateQueryResult(ctx context.Context, m *defaultManager, res *cnstypes.Cns
 		}
 	}
 	return res
+}
+
+// ErrNotFound represents not found error
+var ErrNotFound = errors.New("not found")
+
+// QueryVolumeByID is the helper function to query volume by volumeID
+func QueryVolumeByID(ctx context.Context, volManager Manager, volumeID string) (*cnstypes.CnsVolume, error) {
+	log := logger.GetLogger(ctx)
+	queryFilter := cnstypes.CnsQueryFilter{
+		VolumeIds: []cnstypes.CnsVolumeId{{Id: volumeID}},
+	}
+	queryResult, err := volManager.QueryVolume(ctx, queryFilter)
+	if err != nil {
+		msg := fmt.Sprintf("QueryVolume failed for volumeID: %s with error %+v", volumeID, err)
+		log.Error(msg)
+		return nil, err
+	}
+	if len(queryResult.Volumes) == 0 {
+		msg := fmt.Sprintf("volumeID %q not found in QueryVolume", volumeID)
+		log.Error(msg)
+		return nil, ErrNotFound
+	}
+	return &queryResult.Volumes[0], nil
 }

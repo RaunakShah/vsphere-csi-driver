@@ -1060,7 +1060,7 @@ func csiPVUpdated(ctx context.Context, newPv *v1.PersistentVolume, oldPv *v1.Per
 				}
 			}
 			log.Debugf("PVUpdated: vSphere CSI Driver is creating volume %q with create spec %+v", oldPv.Name, spew.Sdump(createSpec))
-			_, err := metadataSyncer.volumeManager.CreateVolume(ctx, createSpec)
+			_, err := metadataSyncer.volumeManager.CreateVolume(ctx, createSpec, true)
 			if err != nil {
 				log.Errorf("PVUpdated: Failed to create disk %s with error %+v", oldPv.Name, err)
 			} else {

@@ -206,7 +206,7 @@ func (r *ReconcileCnsRegisterVolume) Reconcile(ctx context.Context, request reco
 	log.Infof("Creating CNS volume: %+v for CnsRegisterVolume request with name: %q on namespace: %q",
 		instance, instance.Name, instance.Namespace)
 	log.Debugf("CNS Volume create spec is: %+v", createSpec)
-	volInfo, err := r.volumeManager.CreateVolume(ctx, createSpec)
+	volInfo, err := r.volumeManager.CreateVolume(ctx, createSpec, true)
 	if err != nil {
 		msg := "failed to create CNS volume"
 		log.Errorf(msg)
@@ -221,7 +221,7 @@ func (r *ReconcileCnsRegisterVolume) Reconcile(ctx context.Context, request reco
 	// Query volume
 	log.Infof("Querying volume: %s for CnsRegisterVolume request with name: %q on namespace: %q",
 		volumeID, instance.Name, instance.Namespace)
-	volume, err := common.QueryVolumeByID(ctx, r.volumeManager, volumeID)
+	volume, err := volumes.QueryVolumeByID(ctx, r.volumeManager, volumeID)
 	if err != nil {
 		if err.Error() == common.ErrNotFound.Error() {
 			msg := fmt.Sprintf("CNS Volume: %s not found", volumeID)

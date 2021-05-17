@@ -181,7 +181,7 @@ func fullSyncCreateVolumes(ctx context.Context, createSpecArray []cnstypes.CnsVo
 		}
 		if _, existsInK8s := currentK8sPVMap[volumeID]; existsInK8s {
 			log.Debugf("FullSync: Calling CreateVolume for volume id: %q with createSpec %+v", volumeID, spew.Sdump(createSpec))
-			_, err := metadataSyncer.volumeManager.CreateVolume(ctx, &createSpec)
+			_, err := metadataSyncer.volumeManager.CreateVolume(ctx, &createSpec, true)
 			if err != nil {
 				log.Warnf("FullSync: Failed to create volume with the spec: %+v. Err: %+v", spew.Sdump(createSpec), err)
 				continue

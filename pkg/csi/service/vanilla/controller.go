@@ -220,7 +220,6 @@ func (c *controller) Init(config *cnsconfig.Config, version string) error {
 	}
 	if commonco.ContainerOrchestratorUtility.IsFSSEnabled(ctx, common.CSIVolumeManagerIdempotency) {
 		log.Infof("CSI Volume manager idempotency handling feature flag is enabled.")
-		// TODO: Assign VolumeOperationRequest object to a variable.
 		_, err = cnsvolumeoperationrequest.InitVolumeOperationRequestInterface(ctx)
 		if err != nil {
 			log.Errorf("failed to initialize VolumeOperationRequestInterface with error: %v", err)

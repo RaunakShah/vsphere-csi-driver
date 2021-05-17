@@ -315,7 +315,7 @@ func (r *ReconcileCnsFileAccessConfig) Reconcile(ctx context.Context, request re
 		// Query volume
 		log.Debugf("Querying volume: %s for CnsFileAccessConfig request with name: %q on namespace: %q",
 			volumeID, instance.Name, instance.Namespace)
-		volume, err := common.QueryVolumeByID(ctx, r.volumeManager, volumeID)
+		volume, err := volumes.QueryVolumeByID(ctx, r.volumeManager, volumeID)
 		if err != nil {
 			if err.Error() == common.ErrNotFound.Error() {
 				msg := fmt.Sprintf("CNS Volume: %s not found", volumeID)

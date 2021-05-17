@@ -28,7 +28,7 @@ import (
 	k8s "sigs.k8s.io/vsphere-csi-driver/pkg/kubernetes"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 )
 
 // Nodes comprises cns node manager and kubernetes informer.

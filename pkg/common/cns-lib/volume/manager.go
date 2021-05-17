@@ -20,11 +20,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/internalapis/cnsvolumeoperationrequest"
 	"sync"
 	"time"
-
-	"sigs.k8s.io/vsphere-csi-driver/pkg/common/prometheus"
-	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/logger"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/vmware/govmomi/cns"
@@ -34,6 +32,10 @@ import (
 	"github.com/vmware/govmomi/vim25/mo"
 	vim25types "github.com/vmware/govmomi/vim25/types"
 	"github.com/vmware/govmomi/vslm"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/common/prometheus"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/logger"
 
 	cnsvsphere "sigs.k8s.io/vsphere-csi-driver/pkg/common/cns-lib/vsphere"
 )
@@ -54,7 +56,7 @@ const (
 // Manager provides functionality to manage volumes.
 type Manager interface {
 	// CreateVolume creates a new volume given its spec.
-	CreateVolume(ctx context.Context, spec *cnstypes.CnsVolumeCreateSpec) (*CnsVolumeInfo, error)
+	CreateVolume(ctx context.Context, spec *cnstypes.CnsVolumeCreateSpec, isIdempotencyEnabled bool) (*CnsVolumeInfo, error)
 	// AttachVolume attaches a volume to a virtual machine given the spec.
 	AttachVolume(ctx context.Context, vm *cnsvsphere.VirtualMachine, volumeID string) (string, error)
 	// DetachVolume detaches a volume from the virtual machine given the spec.
@@ -170,7 +172,7 @@ func (m *defaultManager) ResetManager(ctx context.Context, vcenter *cnsvsphere.V
 }
 
 // CreateVolume creates a new volume given its spec.
-func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVolumeCreateSpec) (*CnsVolumeInfo, error) {
+func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVolumeCreateSpec, isIdempotencyEnabled bool) (*CnsVolumeInfo, error) {
 	internalCreateVolume := func() (*CnsVolumeInfo, error) {
 		log := logger.GetLogger(ctx)
 		err := validateManager(ctx, m)
@@ -201,11 +203,65 @@ func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVol
 		// store the volume name passed in by input spec, this name may exceed 80 characters
 		volNameFromInputSpec := spec.Name
 		// Call the CNS CreateVolume
-		taskDetailsInMap, ok := volumeTaskMap[volNameFromInputSpec]
-		if ok {
-			task = taskDetailsInMap.task
-			log.Infof("CreateVolume task still pending for VolumeName: %q, with taskInfo: %+v", volNameFromInputSpec, task)
+		/*
+		if idemp fss:
+			get task from interface
+			make decisions
+		*/
+		var operationStore cnsvolumeoperationrequest.VolumeOperationRequest
+		if isIdempotencyEnabled {
+			operationStore, err = cnsvolumeoperationrequest.InitVolumeOperationRequestInterface(ctx)
+			if err != nil {
+				log.Errorf("failed to initialize VolumeOperationRequest interface with error: %v", err)
+				return nil, err
+			}
+		}
+		var volumeOperationDetails *cnsvolumeoperationrequest.VolumeOperationRequestDetails
+		invokeCNS := true
+		if isIdempotencyEnabled {
+			volumeOperationDetails, err = operationStore.GetRequestDetails(ctx, volNameFromInputSpec)
+			switch {
+			case err == nil:
+				if volumeOperationDetails.OperationDetails != nil {
+					if volumeOperationDetails.VolumeID != "" {
+						log.Infof("Volume with name %s and id %s is already created on CNS with opId: %q.", spec.Name, volumeOperationDetails.VolumeID, taskInfo.ActivationId)
+						return &CnsVolumeInfo{
+							DatastoreURL: "",
+							VolumeID: cnstypes.CnsVolumeId{
+								Id: volumeOperationDetails.VolumeID,
+							},
+						}, nil
+					}
+					if volumeOperationDetails.OperationDetails.Error == "" {
+						if volumeOperationDetails.OperationDetails.TaskID != "" {
+							log.Infof("Volume with name %s has CreateVolume task %s pending on CNS.", spec.Name, volumeOperationDetails.OperationDetails.TaskID)
+							taskMoRef := vim25types.ManagedObjectReference{
+								Type:  "Task",
+								Value: volumeOperationDetails.OperationDetails.TaskID,
+							}
+							task = object.NewTask(m.virtualCenter.Client.Client, taskMoRef)
+							invokeCNS = false
+							break
+						}
+						// orphan volume; no other option
+	//					invokeCNS = true
+					}
+				}
+			case apierrors.IsNotFound(err):
+				volumeOperationDetails = cnsvolumeoperationrequest.CreateVolumeOperationRequestDetails(volNameFromInputSpec, "", "", 0, metav1.Time{}, "", "", "", "")
+			default:
+				return nil, err
+			}
+
 		} else {
+			taskDetailsInMap, ok := volumeTaskMap[volNameFromInputSpec]
+			if ok {
+				task = taskDetailsInMap.task
+				log.Infof("CreateVolume task still pending for VolumeName: %q, with taskInfo: %+v", volNameFromInputSpec, task)
+				invokeCNS = false
+			}
+		}
+		if invokeCNS {
 			// truncate the volume name to make sure the name is within 80 characters before calling CNS
 			if len(spec.Name) > maxLengthOfVolumeNameInCNS {
 				volNameAfterTruncate := spec.Name[0 : maxLengthOfVolumeNameInCNS-1]
@@ -217,6 +273,11 @@ func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVol
 			task, err = m.virtualCenter.CnsClient.CreateVolume(ctx, cnsCreateSpecList)
 			if err != nil {
 				log.Errorf("CNS CreateVolume failed from vCenter %q with err: %v", m.virtualCenter.Config.Host, err)
+				if isIdempotencyEnabled {
+					// Store error
+					volumeOperationDetails = cnsvolumeoperationrequest.CreateVolumeOperationRequestDetails(volNameFromInputSpec, "", "", 0, metav1.Now(), "", "", cnsvolumeoperationrequest.TaskInvocationStatusError, err.Error())
+					_ = operationStore.StoreRequestDetails(ctx, volumeOperationDetails)
+				}
 				return nil, err
 			}
 			var isStaticallyProvisionedBlockVolume bool
@@ -233,16 +294,28 @@ func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVol
 					isStaticallyProvisionedFileVolume = true
 				}
 			}
+
 			// Add the task details to volumeTaskMap only for dynamically provisioned volumes.
 			// For static volume provisioning we need not store the taskDetails as it doesn't result in orphaned volumes
 			if !isStaticallyProvisionedBlockVolume && !isStaticallyProvisionedFileVolume {
-				var taskDetails createVolumeTaskDetails
-				// Store the task details and task object expiration time in volumeTaskMap
-				taskDetails.task = task
-				taskDetails.expirationTime = time.Now().Add(time.Hour * time.Duration(defaultOpsExpirationTimeInHours))
-				volumeTaskMap[volNameFromInputSpec] = &taskDetails
+				if isIdempotencyEnabled {
+					volumeOperationDetails = cnsvolumeoperationrequest.CreateVolumeOperationRequestDetails(volNameFromInputSpec, "", "", 0, metav1.Now(), task.Reference().Value, "", cnsvolumeoperationrequest.TaskInvocationStatusInProgress, "")
+					err = operationStore.StoreRequestDetails(ctx, volumeOperationDetails)
+					if err != nil {
+						log.Errorf("failed to store CreateVolume details with error: %v", err)
+						// SHOULD WE RETURN IF WE CANT STORE?
+						return nil, err
+					}
+				} else {
+					var taskDetails createVolumeTaskDetails
+					// Store the task details and task object expiration time in volumeTaskMap
+					taskDetails.task = task
+					taskDetails.expirationTime = time.Now().Add(time.Hour * time.Duration(defaultOpsExpirationTimeInHours))
+					volumeTaskMap[volNameFromInputSpec] = &taskDetails
+				}
 			}
 		}
+
 		// Get the taskInfo
 		taskInfo, err = cns.GetTaskInfo(ctx, task)
 		if err != nil || taskInfo == nil {
@@ -268,6 +341,13 @@ func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVol
 			fault, ok := volumeOperationRes.Fault.Fault.(cnstypes.CnsAlreadyRegisteredFault)
 			if ok {
 				log.Infof("CreateVolume: Volume is already registered with CNS. VolumeName: %q, volumeID: %q, opId: %q", spec.Name, fault.VolumeId.Id, taskInfo.ActivationId)
+				if isIdempotencyEnabled {
+					volumeOperationDetails = cnsvolumeoperationrequest.CreateVolumeOperationRequestDetails(volNameFromInputSpec, fault.VolumeId.Id, "", 0, metav1.Now(), task.Reference().Value, taskInfo.ActivationId, cnsvolumeoperationrequest.TaskInvocationStatusSuccess, "")
+					err = operationStore.StoreRequestDetails(ctx, volumeOperationDetails)
+					if err != nil {
+						//??
+					}
+				}
 				return &CnsVolumeInfo{
 					DatastoreURL: "",
 					VolumeID:     fault.VolumeId,
@@ -282,9 +362,20 @@ func (m *defaultManager) CreateVolume(ctx context.Context, spec *cnstypes.CnsVol
 				delete(volumeTaskMap, volNameFromInputSpec)
 				taskDetailsInMap.Unlock()
 			}
+			if isIdempotencyEnabled {
+				volumeOperationDetails = cnsvolumeoperationrequest.CreateVolumeOperationRequestDetails(volNameFromInputSpec, "", "", 0, volumeOperationDetails.OperationDetails.TaskInvocationTimestamp, task.Reference().Value, taskInfo.ActivationId, cnsvolumeoperationrequest.TaskInvocationStatusError, volumeOperationRes.Fault.LocalizedMessage)
+				_ = operationStore.StoreRequestDetails(ctx, volumeOperationDetails)
+			}
 			msg := fmt.Sprintf("failed to create cns volume %s. createSpec: %q, fault: %q, opId: %q", volNameFromInputSpec, spew.Sdump(spec), spew.Sdump(volumeOperationRes.Fault), taskInfo.ActivationId)
 			log.Error(msg)
 			return nil, errors.New(msg)
+		}
+		if isIdempotencyEnabled {
+			volumeOperationDetails = cnsvolumeoperationrequest.CreateVolumeOperationRequestDetails(volNameFromInputSpec, volumeOperationRes.VolumeId.Id, "", 0, volumeOperationDetails.OperationDetails.TaskInvocationTimestamp, task.Reference().Value, taskInfo.ActivationId, cnsvolumeoperationrequest.TaskInvocationStatusSuccess, "")
+			err = operationStore.StoreRequestDetails(ctx, volumeOperationDetails)
+			if err != nil {
+
+			}
 		}
 		var datastoreURL string
 		volumeCreateResult := interface{}(taskResult).(*cnstypes.CnsVolumeCreateResult)
