@@ -38,9 +38,11 @@ import (
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
+
 	cnsvolume "sigs.k8s.io/vsphere-csi-driver/pkg/common/cns-lib/volume"
 	cnsvsphere "sigs.k8s.io/vsphere-csi-driver/pkg/common/cns-lib/vsphere"
 	"sigs.k8s.io/vsphere-csi-driver/pkg/common/config"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/common/unittestcommon"
 	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/common"
 )
 
@@ -150,10 +152,12 @@ func getControllerTest(t *testing.T) *controllerTest {
 			t.Fatal(err)
 		}
 
+		fakeOpStore, _ := unittestcommon.InitFakeVolumeOperationRequestInterface()
+
 		manager := &common.Manager{
 			VcenterConfig:  vcenterconfig,
 			CnsConfig:      config,
-			VolumeManager:  cnsvolume.GetManager(ctx, vcenter),
+			VolumeManager:  cnsvolume.GetManager(ctx, vcenter, fakeOpStore),
 			VcenterManager: cnsvsphere.GetVirtualCenterManager(ctx),
 		}
 

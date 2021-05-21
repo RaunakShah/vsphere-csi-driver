@@ -277,11 +277,12 @@ func getControllerTest(t *testing.T) *controllerTest {
 		if err != nil {
 			t.Fatal(err)
 		}
+		fakeOpStore, _ := unittestcommon.InitFakeVolumeOperationRequestInterface()
 
 		manager := &common.Manager{
 			VcenterConfig:  vcenterconfig,
 			CnsConfig:      config,
-			VolumeManager:  cnsvolume.GetManager(ctx, vcenter),
+			VolumeManager:  cnsvolume.GetManager(ctx, vcenter, fakeOpStore),
 			VcenterManager: cnsvsphere.GetVirtualCenterManager(ctx),
 		}
 

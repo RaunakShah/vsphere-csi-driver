@@ -61,7 +61,7 @@ type operationRequestStore struct {
 
 var (
 	operationRequestStoreInstance *operationRequestStore
-	operationStoreInitLock = &sync.Mutex{}
+	operationStoreInitLock        = &sync.Mutex{}
 )
 
 // InitVolumeOperationRequestInterface creates the CnsVolumeOperationRequest

@@ -43,6 +43,7 @@ import (
 	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/logger"
 	internalapis "sigs.k8s.io/vsphere-csi-driver/pkg/internalapis"
 	triggercsifullsyncv1alpha1 "sigs.k8s.io/vsphere-csi-driver/pkg/internalapis/cnsoperator/triggercsifullsync/v1alpha1"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/internalapis/cnsvolumeoperationrequest"
 	k8s "sigs.k8s.io/vsphere-csi-driver/pkg/kubernetes"
 	"sigs.k8s.io/vsphere-csi-driver/pkg/syncer/cnsoperator/controller"
 )
@@ -71,12 +72,22 @@ func InitCnsOperator(ctx context.Context, clusterFlavor cnstypes.CnsClusterFlavo
 	cnsOperator.configInfo = configInfo
 
 	var volumeManager volumes.Manager
+	var operationStore cnsvolumeoperationrequest.VolumeOperationRequest
+	var err error
 	if clusterFlavor == cnstypes.CnsClusterFlavorWorkload || clusterFlavor == cnstypes.CnsClusterFlavorVanilla {
+		if commonco.ContainerOrchestratorUtility.IsFSSEnabled(ctx, common.CSIVolumeManagerIdempotency) {
+			log.Infof("CSI Volume manager idempotency handling feature flag is enabled.")
+			operationStore, err = cnsvolumeoperationrequest.InitVolumeOperationRequestInterface(ctx)
+			if err != nil {
+				log.Errorf("failed to initialize VolumeOperationRequestInterface with error: %v", err)
+				return err
+			}
+		}
 		vCenter, err := cnsvsphere.GetVirtualCenterInstance(ctx, cnsOperator.configInfo, false)
 		if err != nil {
 			return err
 		}
-		volumeManager = volumes.GetManager(ctx, vCenter)
+		volumeManager = volumes.GetManager(ctx, vCenter, operationStore)
 	}
 
 	// Get a config to talk to the apiserver

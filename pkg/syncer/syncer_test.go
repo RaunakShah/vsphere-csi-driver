@@ -189,15 +189,16 @@ func TestSyncerWorkflows(t *testing.T) {
 			}
 		}
 	}()
+	fakeOpStore, _ := unittestcommon.InitFakeVolumeOperationRequestInterface()
 
-	volumeManager = cnsvolumes.GetManager(ctx, virtualCenter)
+	volumeManager = cnsvolumes.GetManager(ctx, virtualCenter, fakeOpStore)
 
 	// Initialize metadata syncer object
 	metadataSyncer = &metadataSyncInformer{}
 	configInfo := &cnsconfig.ConfigurationInfo{}
 	configInfo.Cfg = csiConfig
 	metadataSyncer.configInfo = configInfo
-	metadataSyncer.volumeManager = cnsvolumes.GetManager(ctx, virtualCenter)
+	metadataSyncer.volumeManager = volumeManager
 	metadataSyncer.host = virtualCenter.Config.Host
 
 	// Create the kubernetes client from config or env
@@ -293,7 +294,7 @@ func runTestMetadataSyncInformer(t *testing.T) {
 		},
 	}
 
-	volumeInfo, err := volumeManager.CreateVolume(ctx, &createSpec)
+	volumeInfo, err := volumeManager.CreateVolume(ctx, &createSpec, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -623,7 +624,7 @@ func runTestFullSyncWorkflows(t *testing.T) {
 	}
 	cnsCreationMap = make(map[string]bool)
 
-	volumeInfo, err := volumeManager.CreateVolume(ctx, &createSpec)
+	volumeInfo, err := volumeManager.CreateVolume(ctx, &createSpec, true)
 	if err != nil {
 		t.Errorf("failed to create volume. Error: %+v", err)
 		t.Fatal(err)

@@ -33,7 +33,10 @@ import (
 
 	"sigs.k8s.io/vsphere-csi-driver/pkg/common/cns-lib/volume"
 	cnsvsphere "sigs.k8s.io/vsphere-csi-driver/pkg/common/cns-lib/vsphere"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/common"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/common/commonco"
 	"sigs.k8s.io/vsphere-csi-driver/pkg/csi/service/logger"
+	"sigs.k8s.io/vsphere-csi-driver/pkg/internalapis/cnsvolumeoperationrequest"
 	"sigs.k8s.io/vsphere-csi-driver/pkg/syncer/k8scloudoperator"
 )
 
@@ -70,8 +73,16 @@ func (m *migrationController) relocateCNSVolume(ctx context.Context, volumeID st
 	if err != nil {
 		return fmt.Errorf("failed to get datastore corressponding to URL %v", datastoreURL)
 	}
-
-	volManager := volume.GetManager(ctx, m.vc)
+	var operationStore cnsvolumeoperationrequest.VolumeOperationRequest
+	if commonco.ContainerOrchestratorUtility.IsFSSEnabled(ctx, common.CSIVolumeManagerIdempotency) {
+		log.Infof("CSI Volume manager idempotency handling feature flag is enabled.")
+		operationStore, err = cnsvolumeoperationrequest.InitVolumeOperationRequestInterface(ctx)
+		if err != nil {
+			log.Errorf("failed to initialize VolumeOperationRequestInterface with error: %v", err)
+			return err
+		}
+	}
+	volManager := volume.GetManager(ctx, m.vc, operationStore)
 	relocateSpec := cnstypes.NewCnsBlockVolumeRelocateSpec(volumeID, dsInfo.Reference())
 
 	task, err := volManager.RelocateVolume(ctx, relocateSpec)
